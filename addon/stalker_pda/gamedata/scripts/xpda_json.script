@@ -1,0 +1,106 @@
+-- Minimal JSON encoder for the external PDA snapshots.
+-- Objects keep key order through obj(): the bridge relies on seq_end being last.
+
+local floor, format, byte, gsub = math.floor, string.format, string.byte, string.gsub
+local concat = table.concat
+
+local ORDER = {}
+
+function obj()
+	return { [ORDER] = {} }
+end
+
+function set(o, key, value)
+	if value == nil then
+		return o
+	end
+	local order = o[ORDER]
+	if o[key] == nil then
+		order[#order + 1] = key
+	end
+	o[key] = value
+	return o
+end
+
+function is_finite(v)
+	return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+end
+
+local function number(v)
+	if not is_finite(v) then
+		return nil
+	end
+	if v == floor(v) and v > -2^53 and v < 2^53 then
+		return format("%d", v)
+	end
+	local s = format("%.3f", v)
+	s = gsub(s, "0+$", "")
+	s = gsub(s, "%.$", "")
+	if s == "-0" then
+		s = "0"
+	end
+	return s
+end
+
+local escapes = { ['"'] = '\\"', ["\\"] = "\\\\", ["\b"] = "\\b", ["\f"] = "\\f", ["\n"] = "\\n", ["\r"] = "\\r", ["\t"] = "\\t" }
+
+local function str(s)
+	return '"' .. gsub(s, '[%c"\\]', function(c)
+		return escapes[c] or format("\\u%04x", byte(c))
+	end) .. '"'
+end
+
+local encode_value
+
+local function object(o, out)
+	out[#out + 1] = "{"
+	local first = true
+	for _, key in ipairs(o[ORDER]) do
+		local piece = encode_value(o[key])
+		if piece then
+			if not first then
+				out[#out + 1] = ","
+			end
+			out[#out + 1] = str(key)
+			out[#out + 1] = ":"
+			out[#out + 1] = piece
+			first = false
+		end
+	end
+	out[#out + 1] = "}"
+end
+
+local function array(a, out)
+	out[#out + 1] = "["
+	for i = 1, #a do
+		if i > 1 then
+			out[#out + 1] = ","
+		end
+		out[#out + 1] = encode_value(a[i]) or "null"
+	end
+	out[#out + 1] = "]"
+end
+
+encode_value = function(v)
+	local t = type(v)
+	if t == "string" then
+		return str(v)
+	elseif t == "number" then
+		return number(v)
+	elseif t == "boolean" then
+		return v and "true" or "false"
+	elseif t == "table" then
+		local out = {}
+		if v[ORDER] then
+			object(v, out)
+		else
+			array(v, out)
+		end
+		return concat(out)
+	end
+	return nil
+end
+
+function encode(v)
+	return encode_value(v)
+end

@@ -1,0 +1,633 @@
+-- External PDA exporter. Writes pda_fast.json and pda_slow.json for the PC
+-- bridge (protocol 1, see protocol/snapshot-v1.schema.json in the repo).
+-- Reads only, never touches the save, other scripts or the in-game PDA.
+-- Every engine call is wrapped in pcall: a field the build does not have is
+-- left out of the snapshot and logged once, never replaced with zero.
+
+VERSION = "0.1.0"
+local PROTOCOL = 1
+local LOG_PREFIX = "[xpda] "
+local STATS_PERIOD_MS = 60000
+local ERROR_LOG_PERIOD_MS = 10000
+local MAX_CONSECUTIVE_WRITE_FAILURES = 50
+
+local json, text = xpda_json, xpda_text
+local floor, format, sqrt, atan2, deg = math.floor, string.format, math.sqrt, math.atan2, math.deg
+
+local cfg = {
+	snapshot_dir = nil,
+	text_encoding = "auto",
+	fast_period_ms = 100,
+	slow_period_ms = 1000,
+}
+
+local st = {
+	active = false,
+	session = nil,
+	dir = nil,
+	fast_path = nil,
+	slow_path = nil,
+	seq_fast = 0,
+	seq_slow = 0,
+	next_fast = 0,
+	next_slow = 0,
+	write_failures = 0,
+	last_error_log = -ERROR_LOG_PERIOD_MS,
+	errors_suppressed = 0,
+	stats_since = 0,
+	stats = nil,
+	report_written = false,
+	last_level = nil,
+	last_state = nil,
+}
+
+local field_status = {}
+
+local function log(msg, ...)
+	local line = LOG_PREFIX .. (select("#", ...) > 0 and format(msg, ...) or msg)
+	if printf then
+		printf("%s", text.to_cp1251(line))
+	end
+end
+
+local function now_ms()
+	return time_global()
+end
+
+local clock = (type(os) == "table" and type(os.clock) == "function") and os.clock or nil
+
+local function reset_stats()
+	st.stats = { ticks = 0, fast = 0, slow = 0, bytes = 0, cost_sum = 0, cost_max = 0, errors = 0 }
+end
+
+local function report_error(where, err)
+	st.stats.errors = st.stats.errors + 1
+	local t = now_ms()
+	if t - st.last_error_log >= ERROR_LOG_PERIOD_MS then
+		local extra = st.errors_suppressed > 0 and format(" (ещё %d похожих ошибок скрыто)", st.errors_suppressed) or ""
+		log("ошибка в %s: %s%s", where, tostring(err), extra)
+		st.last_error_log = t
+		st.errors_suppressed = 0
+	else
+		st.errors_suppressed = st.errors_suppressed + 1
+	end
+end
+
+-- Returns the value or nil. Logs when a field becomes unavailable and when
+-- it comes back, so the game log shows exactly which source broke.
+local function read(name, fn)
+	local ok, value = pcall(fn)
+	local prev = field_status[name]
+	if ok and value ~= nil then
+		if prev ~= nil and prev ~= "ok" then
+			log("поле %s снова читается", name)
+		end
+		field_status[name] = "ok"
+		return value
+	end
+	local why = ok and "движок вернул nil" or tostring(value)
+	if prev == nil or prev == "ok" then
+		log("поле %s не читается: %s", name, why)
+	end
+	field_status[name] = why
+	return nil
+end
+
+local function clamp01(v)
+	if not json.is_finite(v) then
+		return nil
+	end
+	if v < 0 then
+		return 0
+	elseif v > 1 then
+		return 1
+	end
+	return v
+end
+
+local function round(v, step)
+	return floor(v / step + 0.5) * step
+end
+
+local function ui_text(s)
+	return text.to_utf8(s, cfg.text_encoding)
+end
+
+-- Readers ------------------------------------------------------------------
+
+local function actor()
+	local a = db and db.actor
+	if not a then
+		error("db.actor отсутствует")
+	end
+	return a
+end
+
+local function read_level_id()
+	return read("level.id", function()
+		local id = level.name()
+		if type(id) == "string" and id ~= "" then
+			return id
+		end
+	end)
+end
+
+local function read_level_name(id)
+	return read("level.name", function()
+		local s = game.translate_string(id)
+		if s == id then
+			error("в строках игры нет перевода для " .. id)
+		end
+		if type(s) == "string" and s ~= "" then
+			return ui_text(s)
+		end
+	end)
+end
+
+local function read_position()
+	return read("position", function()
+		local p = actor():position()
+		local x, y, z = p.x, p.y, p.z
+		if json.is_finite(x) and json.is_finite(y) and json.is_finite(z) then
+			local pos = json.obj()
+			json.set(pos, "x", round(x, 0.01))
+			json.set(pos, "y", round(y, 0.01))
+			json.set(pos, "z", round(z, 0.01))
+			return pos
+		end
+	end)
+end
+
+local function read_heading()
+	return read("heading_deg", function()
+		local d = device().cam_dir
+		local x, z = d.x, d.z
+		if not (json.is_finite(x) and json.is_finite(z)) or sqrt(x * x + z * z) < 1e-4 then
+			return nil
+		end
+		local h = round(deg(atan2(x, z)) % 360, 0.1)
+		if h >= 360 then
+			h = 0
+		end
+		return h
+	end)
+end
+
+local function read_game_time()
+	return read("game_time", function()
+		local day, hour, minute = level.get_time_days(), level.get_time_hours(), level.get_time_minutes()
+		if type(day) ~= "number" or type(hour) ~= "number" or type(minute) ~= "number" then
+			return nil
+		end
+		day, hour, minute = floor(day), floor(hour), floor(minute)
+		if day < 1 or hour < 0 or hour > 23 or minute < 0 or minute > 59 then
+			error(format("значения вне диапазона: день %s, час %s, минута %s", day, hour, minute))
+		end
+		local t = json.obj()
+		json.set(t, "day", day)
+		json.set(t, "hour", hour)
+		json.set(t, "minute", minute)
+		return t
+	end)
+end
+
+local function read_health()
+	return read("health", function()
+		return clamp01(actor().health)
+	end)
+end
+
+local function read_radiation()
+	return read("radiation", function()
+		return clamp01(actor().radiation)
+	end)
+end
+
+local function read_alive()
+	return read("alive", function()
+		return actor():alive() and true or false
+	end)
+end
+
+local function read_money()
+	return read("player.money", function()
+		local m = actor():money()
+		if json.is_finite(m) then
+			return floor(m)
+		end
+	end)
+end
+
+local function read_name()
+	return read("player.name", function()
+		local s = actor():character_name()
+		if type(s) == "string" and s ~= "" then
+			return ui_text(s)
+		end
+	end)
+end
+
+local function read_id()
+	return read("player.id", function()
+		local id = actor():id()
+		if json.is_finite(id) and id >= 0 then
+			return floor(id)
+		end
+	end)
+end
+
+-- Snapshots ----------------------------------------------------------------
+
+local function envelope(kind, seq)
+	local o = json.obj()
+	json.set(o, "protocol", PROTOCOL)
+	json.set(o, "kind", kind)
+	json.set(o, "seq", seq)
+	json.set(o, "session", st.session)
+	return o
+end
+
+local function build_fast(seq, forced_state)
+	local o = envelope("fast", seq)
+	if forced_state then
+		json.set(o, "game_state", forced_state)
+		json.set(o, "seq_end", seq)
+		return o
+	end
+
+	local alive = read_alive()
+	local health = read_health()
+	local game_state = "in_game"
+	if alive == false or (alive == nil and health == 0) then
+		game_state = "dead"
+	end
+	json.set(o, "game_state", game_state)
+
+	local level_id = read_level_id()
+	if level_id then
+		local lv = json.obj()
+		json.set(lv, "id", level_id)
+		json.set(lv, "name", read_level_name(level_id))
+		json.set(o, "level", lv)
+	end
+	json.set(o, "position", read_position())
+	json.set(o, "heading_deg", read_heading())
+	json.set(o, "game_time", read_game_time())
+	json.set(o, "health", health and round(health, 0.001))
+	local rad = read_radiation()
+	json.set(o, "radiation", rad and round(rad, 0.001))
+	json.set(o, "seq_end", seq)
+	return o, game_state, level_id
+end
+
+local function build_slow(seq)
+	local o = envelope("slow", seq)
+	json.set(o, "reader", "anomaly")
+
+	local player = json.obj()
+	local name, id, money = read_name(), read_id(), read_money()
+	json.set(player, "name", name)
+	json.set(player, "id", id)
+	json.set(player, "money", money)
+
+	local caps = json.obj()
+	json.set(caps, "player", name ~= nil or money ~= nil)
+	json.set(caps, "pose", field_status["position"] == "ok")
+	json.set(caps, "map_texture", false)
+	json.set(caps, "tasks", false)
+	json.set(caps, "inventory", false)
+	json.set(caps, "contacts", false)
+	json.set(caps, "messages", false)
+	json.set(o, "capabilities", caps)
+
+	if name ~= nil or id ~= nil or money ~= nil then
+		json.set(o, "player", player)
+	end
+	json.set(o, "seq_end", seq)
+	return o
+end
+
+-- Files --------------------------------------------------------------------
+
+local function join(dir, name)
+	local last = dir:sub(-1)
+	if last == "\\" or last == "/" then
+		return dir .. name
+	end
+	return dir .. "\\" .. name
+end
+
+local function write_file(path, data)
+	local f, err = io.open(path, "wb")
+	if not f then
+		return false, err or "io.open вернул nil"
+	end
+	local ok, werr = f:write(data)
+	f:close()
+	if not ok then
+		return false, werr or "запись не удалась"
+	end
+	return true
+end
+
+local function write_snapshot(path, doc)
+	local data = json.encode(doc)
+	local ok, err = write_file(path, data)
+	if ok then
+		st.write_failures = 0
+		st.stats.bytes = st.stats.bytes + #data
+		return true
+	end
+	st.write_failures = st.write_failures + 1
+	report_error("записи " .. path, err)
+	if st.write_failures >= MAX_CONSECUTIVE_WRITE_FAILURES then
+		log("%d записей подряд не удались, экспорт остановлен до следующей загрузки", st.write_failures)
+		st.active = false
+	end
+	return false
+end
+
+local function resolve_alias(alias)
+	local ok, p = pcall(function()
+		return getFS():update_path(alias, "")
+	end)
+	if ok and type(p) == "string" and p ~= "" then
+		return p
+	end
+	return nil, ok and "пустой путь" or tostring(p)
+end
+
+local function candidate_dirs()
+	local list = {}
+	if cfg.snapshot_dir then
+		list[#list + 1] = { label = "snapshot_dir из xpda.ltx", dir = cfg.snapshot_dir }
+	end
+	for _, alias in ipairs({ "$app_data_root$", "$game_saves$" }) do
+		local p, why = resolve_alias(alias)
+		if p then
+			list[#list + 1] = { label = alias, dir = p }
+		else
+			log("путь %s не получен: %s", alias, why)
+		end
+	end
+	return list
+end
+
+-- Diagnostics --------------------------------------------------------------
+
+local function has(path)
+	local t = _G
+	for part in path:gmatch("[^%.]+") do
+		if type(t) ~= "table" then
+			return false
+		end
+		t = t[part]
+	end
+	return t ~= nil
+end
+
+local function environment_lines()
+	local lines = {}
+	for _, name in ipairs({ "io.open", "os.clock", "os.time", "os.getenv", "os.rename", "os.remove", "os.execute", "io.popen", "jit" }) do
+		lines[#lines + 1] = format("  %-10s %s", name, has(name) and "есть" or "нет")
+	end
+	local pkg = type(package) == "table" and package or {}
+	for _, name in ipairs({ "ffi", "lfs", "socket" }) do
+		local loaded = type(pkg.loaded) == "table" and pkg.loaded[name]
+		local preload = type(pkg.preload) == "table" and pkg.preload[name]
+		lines[#lines + 1] = format("  %-10s %s", name, loaded and "загружен" or (preload and "можно подключить" or "нет"))
+	end
+	return lines
+end
+
+-- Paths and io errors come in the Windows ANSI code page; the report is UTF-8.
+local function os_text(s)
+	return text.to_utf8(tostring(s), "auto") or tostring(s)
+end
+
+local function report_text(chosen, tried)
+	local out = {
+		"Внешний ПДА, экспортёр " .. VERSION .. ", протокол " .. PROTOCOL,
+		"Сессия: " .. tostring(st.session),
+		"",
+		"Папка снимков: " .. os_text(chosen),
+		"Мосту нужен этот путь: python -m pda_bridge --snapshot-dir \"" .. os_text(chosen) .. "\"",
+		"Если игра запущена через MO2, файлы могут лежать в папке overwrite профиля MO2.",
+		"",
+		"Проверенные папки:",
+	}
+	for _, t in ipairs(tried) do
+		out[#out + 1] = format("  %s: %s -> %s", t.label, os_text(t.dir), os_text(t.result))
+	end
+	out[#out + 1] = ""
+	out[#out + 1] = "Lua в этой сборке:"
+	for _, l in ipairs(environment_lines()) do
+		out[#out + 1] = l
+	end
+	out[#out + 1] = ""
+	out[#out + 1] = "Поля на первом кадре:"
+	local names = {}
+	for k in pairs(field_status) do
+		names[#names + 1] = k
+	end
+	table.sort(names)
+	for _, k in ipairs(names) do
+		out[#out + 1] = format("  %-14s %s", k, field_status[k] == "ok" and "ok" or ("нет: " .. field_status[k]))
+	end
+	out[#out + 1] = ""
+	out[#out + 1] = format("Настройки: кодировка %s, быстрый снимок %d мс, медленный %d мс", cfg.text_encoding, cfg.fast_period_ms, cfg.slow_period_ms)
+	return table.concat(out, "\r\n") .. "\r\n"
+end
+
+-- Picks the first directory where a write works. The report doubles as the
+-- write probe, so a broken path shows up before the first snapshot.
+local function choose_dir()
+	local tried = {}
+	local chosen
+	for _, c in ipairs(candidate_dirs()) do
+		local ok, err = write_file(join(c.dir, "pda_report.txt"), "проверка записи\r\n")
+		tried[#tried + 1] = { label = c.label, dir = c.dir, result = ok and "запись работает" or ("ошибка: " .. tostring(err)) }
+		log("папка %s (%s): %s", c.dir, c.label, tried[#tried].result)
+		if ok then
+			chosen = c.dir
+			break
+		end
+	end
+	return chosen, tried
+end
+
+-- Config -------------------------------------------------------------------
+
+local function load_config()
+	local ok, ini = pcall(ini_file, "xpda.ltx")
+	if not ok or not ini then
+		log("xpda.ltx не прочитан (%s), настройки по умолчанию", tostring(ini))
+		return
+	end
+	local function value(key)
+		local ok2, v = pcall(function()
+			if ini:section_exist("xpda") and ini:line_exist("xpda", key) then
+				return ini:r_string("xpda", key)
+			end
+		end)
+		if ok2 and type(v) == "string" then
+			v = v:match("^%s*(.-)%s*$")
+			if v ~= "" then
+				return v
+			end
+		end
+		return nil
+	end
+	cfg.snapshot_dir = value("snapshot_dir")
+	local enc = value("text_encoding")
+	if enc == "utf8" or enc == "cp1251" or enc == "auto" then
+		cfg.text_encoding = enc
+	elseif enc then
+		log("text_encoding = %s не поддерживается, беру auto", enc)
+	end
+	local fast = tonumber(value("fast_period_ms") or "")
+	if fast and fast >= 50 and fast <= 1000 then
+		cfg.fast_period_ms = floor(fast)
+	end
+	local slow = tonumber(value("slow_period_ms") or "")
+	if slow and slow >= 250 and slow <= 10000 then
+		cfg.slow_period_ms = floor(slow)
+	end
+end
+
+-- Lifecycle ----------------------------------------------------------------
+
+local function new_session()
+	local t = 0
+	if type(os) == "table" and type(os.time) == "function" then
+		local ok, v = pcall(os.time)
+		if ok and type(v) == "number" then
+			t = v
+		end
+	end
+	return format("%08x%04x", (t + now_ms()) % 0x100000000, math.random(0, 0xFFFF))
+end
+
+local function log_stats(t)
+	local s = st.stats
+	local span = (t - st.stats_since) / 1000
+	if s.ticks > 0 and span > 0 then
+		local cost = clock and format(", Lua %.3f мс в среднем, максимум %.3f мс", s.cost_sum / s.ticks * 1000, s.cost_max * 1000) or ""
+		log("за %.0f с: быстрых %d, медленных %d, %.1f КБ%s, ошибок %d", span, s.fast, s.slow, s.bytes / 1024, cost, s.errors)
+	end
+	reset_stats()
+	st.stats_since = t
+end
+
+-- Keeps the average rate on frame-aligned updates; after a long freeze it
+-- restarts from now instead of writing a burst of catch-up snapshots.
+local function schedule(due, t, period)
+	local next_due = due + period
+	if next_due <= t then
+		return t + period
+	end
+	return next_due
+end
+
+local function tick(t)
+	if t >= st.next_fast then
+		st.next_fast = schedule(st.next_fast, t, cfg.fast_period_ms)
+		st.seq_fast = st.seq_fast + 1
+		local doc, game_state, level_id = build_fast(st.seq_fast)
+		if write_snapshot(st.fast_path, doc) then
+			st.stats.fast = st.stats.fast + 1
+		end
+		if game_state ~= st.last_state then
+			log("состояние игры: %s", game_state)
+			st.last_state = game_state
+		end
+		if level_id ~= st.last_level then
+			log("уровень: %s", tostring(level_id))
+			st.last_level = level_id
+		end
+	end
+	if st.active and t >= st.next_slow then
+		st.next_slow = schedule(st.next_slow, t, cfg.slow_period_ms)
+		st.seq_slow = st.seq_slow + 1
+		if write_snapshot(st.slow_path, build_slow(st.seq_slow)) then
+			st.stats.slow = st.stats.slow + 1
+		end
+	end
+end
+
+local function on_first_update()
+	local ok, err = pcall(function()
+		reset_stats()
+		st.session = new_session()
+		st.seq_fast, st.seq_slow = 0, 0
+		st.last_level, st.last_state = nil, nil
+		st.write_failures = 0
+		local chosen, tried = choose_dir()
+		if not chosen then
+			log("ни одна папка не подошла для записи, экспорт выключен. Укажите snapshot_dir в gamedata\\configs\\xpda.ltx")
+			st.active = false
+			return
+		end
+		st.dir = chosen
+		st.fast_path = join(chosen, "pda_fast.json")
+		st.slow_path = join(chosen, "pda_slow.json")
+		st.active = true
+		local t = now_ms()
+		st.stats_since = t
+		st.next_fast, st.next_slow = 0, 0
+		tick(t)
+		write_file(join(chosen, "pda_report.txt"), report_text(chosen, tried))
+		log("экспорт %s запущен: сессия %s, папка %s", VERSION, st.session, chosen)
+	end)
+	if not ok then
+		st.active = false
+		log("запуск экспорта не удался: %s", tostring(err))
+	end
+end
+
+local function on_update()
+	if not st.active then
+		return
+	end
+	local t0 = clock and clock()
+	local t = now_ms()
+	local ok, err = pcall(tick, t)
+	if not ok then
+		report_error("кадре экспорта", err)
+	end
+	local s = st.stats
+	s.ticks = s.ticks + 1
+	if t0 then
+		local cost = clock() - t0
+		s.cost_sum = s.cost_sum + cost
+		if cost > s.cost_max then
+			s.cost_max = cost
+		end
+	end
+	if t - st.stats_since >= STATS_PERIOD_MS then
+		log_stats(t)
+	end
+end
+
+-- Fires when the level unloads: quitting to the menu, loading a save or
+-- changing level. The game cannot tell which, so the phone sees "loading"
+-- and then either a new session or a stale link.
+local function on_net_destroy()
+	if not st.active then
+		return
+	end
+	pcall(function()
+		st.seq_fast = st.seq_fast + 1
+		write_snapshot(st.fast_path, build_fast(st.seq_fast, "loading"))
+		log_stats(now_ms())
+	end)
+	st.active = false
+end
+
+function on_game_start()
+	load_config()
+	RegisterScriptCallback("actor_on_first_update", on_first_update)
+	RegisterScriptCallback("actor_on_update", on_update)
+	RegisterScriptCallback("actor_on_net_destroy", on_net_destroy)
+	log("экспортёр %s загружен", VERSION)
+end

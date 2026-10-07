@@ -1,0 +1,111 @@
+-- Game strings (translate_string, character names) come in the localization
+-- code page, cp1251 for Russian. The bridge only accepts UTF-8.
+
+local byte, char, floor = string.byte, string.char, math.floor
+local concat = table.concat
+
+local CP1251_HIGH = {
+	0x0402, 0x0403, 0x201A, 0x0453, 0x201E, 0x2026, 0x2020, 0x2021, 0x20AC, 0x2030, 0x0409, 0x2039, 0x040A, 0x040C, 0x040B, 0x040F,
+	0x0452, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0xFFFD, 0x2122, 0x0459, 0x203A, 0x045A, 0x045C, 0x045B, 0x045F,
+	0x00A0, 0x040E, 0x045E, 0x0408, 0x00A4, 0x0490, 0x00A6, 0x00A7, 0x0401, 0x00A9, 0x0404, 0x00AB, 0x00AC, 0x00AD, 0x00AE, 0x0407,
+	0x00B0, 0x00B1, 0x0406, 0x0456, 0x0491, 0x00B5, 0x00B6, 0x00B7, 0x0451, 0x2116, 0x0454, 0x00BB, 0x0458, 0x0405, 0x0455, 0x0457,
+}
+
+local function utf8_char(cp)
+	if cp < 0x80 then
+		return char(cp)
+	elseif cp < 0x800 then
+		return char(0xC0 + floor(cp / 0x40), 0x80 + cp % 0x40)
+	end
+	return char(0xE0 + floor(cp / 0x1000), 0x80 + floor(cp / 0x40) % 0x40, 0x80 + cp % 0x40)
+end
+
+local cp1251_map = {}
+for b = 0x80, 0xFF do
+	local cp = b >= 0xC0 and (0x0410 + b - 0xC0) or CP1251_HIGH[b - 0x7F]
+	cp1251_map[char(b)] = utf8_char(cp)
+end
+
+local cp1251_reverse = {}
+for b = 0x80, 0xFF do
+	local cp = b >= 0xC0 and (0x0410 + b - 0xC0) or CP1251_HIGH[b - 0x7F]
+	if cp ~= 0xFFFD then
+		cp1251_reverse[cp] = char(b)
+	end
+end
+
+-- For the game log and console, which expect cp1251. Bytes that are not part
+-- of a UTF-8 sequence (paths already in the ANSI code page) pass through.
+function to_cp1251(s)
+	local out, i, n = {}, 1, #s
+	while i <= n do
+		local c = byte(s, i)
+		local c2, c3 = byte(s, i + 1), byte(s, i + 2)
+		local mapped
+		if c >= 0xC2 and c <= 0xDF and c2 and c2 >= 0x80 and c2 <= 0xBF then
+			mapped = cp1251_reverse[(c - 0xC0) * 0x40 + (c2 - 0x80)]
+			if mapped then
+				out[#out + 1] = mapped
+				i = i + 2
+			end
+		elseif c >= 0xE0 and c <= 0xEF and c2 and c3 and c2 >= 0x80 and c2 <= 0xBF and c3 >= 0x80 and c3 <= 0xBF then
+			mapped = cp1251_reverse[(c - 0xE0) * 0x1000 + (c2 - 0x80) * 0x40 + (c3 - 0x80)]
+			if mapped then
+				out[#out + 1] = mapped
+				i = i + 3
+			end
+		end
+		if not mapped then
+			out[#out + 1] = char(c)
+			i = i + 1
+		end
+	end
+	return concat(out)
+end
+
+function is_utf8(s)
+	local i, n = 1, #s
+	while i <= n do
+		local c = byte(s, i)
+		local extra
+		if c < 0x80 then
+			extra = 0
+		elseif c >= 0xC2 and c <= 0xDF then
+			extra = 1
+		elseif c >= 0xE0 and c <= 0xEF then
+			extra = 2
+		elseif c >= 0xF0 and c <= 0xF4 then
+			extra = 3
+		else
+			return false
+		end
+		for k = 1, extra do
+			local cc = byte(s, i + k)
+			if not cc or cc < 0x80 or cc > 0xBF then
+				return false
+			end
+		end
+		i = i + extra + 1
+	end
+	return true
+end
+
+function from_cp1251(s)
+	return (s:gsub("[\128-\255]", cp1251_map))
+end
+
+-- encoding: "utf8", "cp1251" or "auto" (keep valid UTF-8, otherwise cp1251).
+function to_utf8(s, encoding)
+	if type(s) ~= "string" then
+		return nil
+	end
+	if encoding == "utf8" then
+		return is_utf8(s) and s or nil
+	elseif encoding == "cp1251" then
+		return from_cp1251(s)
+	end
+	if is_utf8(s) then
+		return s
+	end
+	return from_cp1251(s)
+end
