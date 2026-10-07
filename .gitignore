@@ -1,0 +1,8 @@
+agent-tools/
+node_modules/
+web/dist/
+bridge/.data/
+__pycache__/
+*.pyc
+*.log
+.DS_Store

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stalker-pda.local/protocol/snapshot-v1.schema.json",
+  "title": "Снимок игры для внешнего ПДА, протокол 1",
+  "description": "Игра пишет два файла: pda_fast.json и pda_slow.json. Файл принимается, только если seq совпадает с seq_end. Поле, которое игра не смогла прочитать, отсутствует, а не заполняется нулём.",
+  "oneOf": [{ "$ref": "#/$defs/fast" }, { "$ref": "#/$defs/slow" }],
+  "$defs": {
+    "envelope": {
+      "type": "object",
+      "required": ["protocol", "kind", "seq", "session", "seq_end"],
+      "properties": {
+        "protocol": { "const": 1 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "seq_end": { "type": "integer", "minimum": 0 },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Меняется при каждой загрузке сохранения или новой игре."
+        }
+      }
+    },
+    "fast": {
+      "description": "Пишется 5-10 раз в секунду.",
+      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "type": "object",
+      "properties": {
+        "protocol": true,
+        "seq": true,
+        "seq_end": true,
+        "session": true,
+        "kind": { "const": "fast" },
+        "game_state": { "enum": ["in_game", "loading", "dead", "menu"] },
+        "level": {
+          "type": "object",
+          "required": ["id"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "name": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "position": {
+          "description": "Мировые координаты X-Ray: x на восток, y вверх, z на север.",
+          "type": "object",
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "z": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
+        "heading_deg": {
+          "description": "0 смотрит на +z, рост по часовой стрелке к +x.",
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 360
+        },
+        "game_time": {
+          "type": "object",
+          "required": ["day", "hour", "minute"],
+          "properties": {
+            "day": { "type": "integer", "minimum": 1 },
+            "hour": { "type": "integer", "minimum": 0, "maximum": 23 },
+            "minute": { "type": "integer", "minimum": 0, "maximum": 59 }
+          },
+          "additionalProperties": false
+        },
+        "health": { "type": "number", "minimum": 0, "maximum": 1 },
+        "radiation": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "slow": {
+      "description": "Пишется раз в секунду или по изменению.",
+      "allOf": [{ "$ref": "#/$defs/envelope" }],
+      "type": "object",
+      "properties": {
+        "protocol": true,
+        "seq": true,
+        "seq_end": true,
+        "session": true,
+        "kind": { "const": "slow" },
+        "reader": {
+          "description": "Кто собрал снимок. demo - имитация моста, игры нет.",
+          "enum": ["anomaly", "gamma", "demo"]
+        },
+        "game": {
+          "type": "object",
+          "properties": {
+            "build": { "type": "string" },
+            "modpack": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": {
+          "description": "Что этот читатель реально отдаёт в этой сессии.",
+          "type": "object",
+          "properties": {
+            "player": { "type": "boolean" },
+            "pose": { "type": "boolean" },
+            "map_texture": { "type": "boolean" },
+            "tasks": { "type": "boolean" },
+            "inventory": { "type": "boolean" },
+            "contacts": { "type": "boolean" },
+            "messages": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "player": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "id": { "type": "integer", "minimum": 0 },
+            "money": { "type": "integer" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
