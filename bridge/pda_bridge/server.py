@@ -189,19 +189,16 @@ class BridgeHandler(BaseHTTPRequestHandler):
                     channel.changed.wait_for(
                         lambda: channel.state.version != sent_version, timeout=STREAM_KEEPALIVE_S
                     )
-                now = time.monotonic()
+                wait = STREAM_MIN_INTERVAL_S - (time.monotonic() - last_write)
+                if wait > 0:
+                    time.sleep(wait)
+                # Sent even when nothing changed: the phone treats a silent
+                # stream as dead, and snapshot ages need refreshing anyway.
                 version, body = self.server.state_body()
-                if version != sent_version:
-                    wait = STREAM_MIN_INTERVAL_S - (now - last_write)
-                    if wait > 0:
-                        time.sleep(wait)
-                        version, body = self.server.state_body()
-                    payload = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
-                    self.wfile.write(f"event: state\ndata: {payload}\n\n".encode("utf-8"))
-                    sent_version = version
-                else:
-                    self.wfile.write(b": keepalive\n\n")
+                payload = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+                self.wfile.write(f"event: state\ndata: {payload}\n\n".encode("utf-8"))
                 self.wfile.flush()
+                sent_version = version
                 last_write = time.monotonic()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, TimeoutError):
             pass
