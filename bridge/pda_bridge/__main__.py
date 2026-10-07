@@ -16,6 +16,7 @@ from typing import Any
 from . import PROTOCOL, VERSION
 from .channel import SnapshotChannel
 from .fake_game import DemoWriter, ReplayWriter
+from .locate import MARKERS, find_snapshot_dirs
 from .server import BridgeServer, lan_addresses, load_token
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,6 +32,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     src.add_argument("--snapshot-dir", type=Path, help="папка, куда игровой аддон пишет pda_fast.json и pda_slow.json")
     src.add_argument("--demo", action="store_true", help="без игры: имитация пишет снимки во временную папку")
     src.add_argument("--replay", type=Path, metavar="FILE", help="проиграть запись, сделанную через --record")
+    src.add_argument(
+        "--locate",
+        type=Path,
+        nargs="+",
+        metavar="DIR",
+        help="найти, куда игра пишет снимки: укажите папку игры и папку MO2, мост не запускается",
+    )
     p.add_argument("--host", default="0.0.0.0", help="адрес прослушивания (по умолчанию все интерфейсы локальной сети)")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
     p.add_argument("--web-dist", type=Path, default=ROOT / "web" / "dist", help="собранный веб-экран")
@@ -72,8 +80,23 @@ class Recorder:
             self.fh.flush()
 
 
+def locate(roots: list[Path]) -> int:
+    found = find_snapshot_dirs(roots)
+    if not found:
+        print("Снимков не найдено. Запустите игру с аддоном, загрузите сохранение и повторите.")
+        print("Проверьте также gamedata\\configs\\xpda.ltx: snapshot_dir и лог игры (строки [xpda]).")
+        return 1
+    print("Найдены папки со снимками (свежие сверху):")
+    for f in found:
+        print("  " + f.describe())
+    print(f'\nЗапуск моста: python -m pda_bridge --snapshot-dir "{found[0].directory}"')
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.locate:
+        return locate(args.locate)
     log_path = setup_logging(args.data_dir, args.verbose)
     log = logging.getLogger("pda.bridge")
     log.info("мост ПДА %s, протокол %d, лог: %s", VERSION, PROTOCOL, log_path)
@@ -84,6 +107,12 @@ def main(argv: list[str] | None = None) -> int:
         if not snapshot_dir.is_dir():
             log.error("папки снимков нет: %s. Укажите ту, куда пишет игровой аддон.", snapshot_dir)
             return 2
+        if not any((snapshot_dir / name).exists() for name in MARKERS):
+            log.warning(
+                "в %s пока нет снимков. Если игра идёт через MO2, они могут быть в папке overwrite. "
+                "Найти: python -m pda_bridge --locate ПАПКА_ИГРЫ ПАПКА_MO2",
+                snapshot_dir,
+            )
     else:
         snapshot_dir = Path(tempfile.mkdtemp(prefix="stalker-pda-"))
         if args.replay:
