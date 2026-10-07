@@ -1,0 +1,19 @@
+{
+  "protocol": 1,
+  "kind": "slow",
+  "seq": 9,
+  "session": "f0e1d2c3b4a5",
+  "reader": "gamma",
+  "game": {
+    "build": "Anomaly 1.5.3",
+    "modpack": "GAMMA"
+  },
+  "capabilities": {
+    "player": true,
+    "pose": true
+  },
+  "player": {
+    "id": 0
+  },
+  "seq_end": 9
+}

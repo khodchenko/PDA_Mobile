@@ -1,0 +1,17 @@
+{
+  "protocol": 1,
+  "kind": "fast",
+  "seq": 1843,
+  "session": "a1b2c3d4e5f6",
+  "game_state": "loading",
+  "level": {
+    "id": "l02_garbage",
+    "name": "Свалка"
+  },
+  "game_time": {
+    "day": 3,
+    "hour": 21,
+    "minute": 49
+  },
+  "seq_end": 1843
+}

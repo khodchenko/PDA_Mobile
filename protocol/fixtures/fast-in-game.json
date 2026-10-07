@@ -1,0 +1,25 @@
+{
+  "protocol": 1,
+  "kind": "fast",
+  "seq": 1842,
+  "session": "a1b2c3d4e5f6",
+  "game_state": "in_game",
+  "level": {
+    "id": "l01_escape",
+    "name": "Кордон"
+  },
+  "game_time": {
+    "day": 3,
+    "hour": 21,
+    "minute": 47
+  },
+  "position": {
+    "x": -118.42,
+    "y": 11.9,
+    "z": -257.06
+  },
+  "heading_deg": 37.5,
+  "health": 0.74,
+  "radiation": 0.12,
+  "seq_end": 1842
+}

@@ -1,0 +1,25 @@
+{
+  "protocol": 1,
+  "kind": "slow",
+  "seq": 184,
+  "session": "a1b2c3d4e5f6",
+  "reader": "demo",
+  "game": {
+    "build": "демо без игры"
+  },
+  "capabilities": {
+    "player": true,
+    "pose": true,
+    "map_texture": false,
+    "tasks": false,
+    "inventory": false,
+    "contacts": false,
+    "messages": false
+  },
+  "player": {
+    "name": "Лис (демо)",
+    "id": 0,
+    "money": 18450
+  },
+  "seq_end": 184
+}
