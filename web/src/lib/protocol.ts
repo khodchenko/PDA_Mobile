@@ -1,0 +1,70 @@
+// Mirrors protocol/snapshot-v1.schema.json. Every game field is optional:
+// absent means the game could not read it, not zero.
+
+export const PROTOCOL = 1
+
+export type GameState = "in_game" | "loading" | "dead" | "menu"
+export type Reader = "anomaly" | "gamma" | "demo"
+export type LinkStatus = "no_data" | "ok" | "stale"
+
+export interface Envelope {
+  protocol: number
+  seq: number
+  seq_end: number
+  session: string
+}
+
+export interface FastSnapshot extends Envelope {
+  kind: "fast"
+  game_state?: GameState
+  level?: { id: string; name?: string }
+  position?: { x: number; y: number; z: number }
+  heading_deg?: number
+  game_time?: { day: number; hour: number; minute: number }
+  health?: number
+  radiation?: number
+}
+
+export interface Capabilities {
+  player?: boolean
+  pose?: boolean
+  map_texture?: boolean
+  tasks?: boolean
+  inventory?: boolean
+  contacts?: boolean
+  messages?: boolean
+}
+
+export interface SlowSnapshot extends Envelope {
+  kind: "slow"
+  reader?: Reader
+  game?: { build?: string; modpack?: string }
+  capabilities?: Capabilities
+  player?: { name?: string; id?: number; money?: number }
+}
+
+export interface BridgeState {
+  protocol: number
+  bridge: {
+    version: string
+    protocol: number
+    source: "file" | "demo" | "replay"
+    snapshot_dir: string
+    uptime_s: number
+  }
+  link: {
+    status: LinkStatus
+    fast_age_ms: number | null
+    slow_age_ms: number | null
+    accepted: { fast: number; slow: number }
+    rejected: { fast: number; slow: number }
+    last_reject: { fast: string | null; slow: string | null }
+  }
+  fast: FastSnapshot | null
+  slow: SlowSnapshot | null
+}
+
+export interface Pairing {
+  token: string
+  urls: string[]
+}
