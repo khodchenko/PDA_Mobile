@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+import webbrowser
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         metavar="DIR",
         help="найти, куда игра пишет снимки: укажите папку игры и папку MO2, мост не запускается",
     )
+    src.add_argument(
+        "--find-in",
+        type=Path,
+        nargs="+",
+        metavar="DIR",
+        help="найти самые свежие снимки в этих папках и читать их",
+    )
+    p.add_argument("--open", action="store_true", help="открыть ПДА в браузере после запуска")
     p.add_argument("--host", default="0.0.0.0", help="адрес прослушивания (по умолчанию все интерфейсы локальной сети)")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
     p.add_argument("--web-dist", type=Path, default=ROOT / "web" / "dist", help="собранный веб-экран")
@@ -102,6 +111,16 @@ def main(argv: list[str] | None = None) -> int:
     log.info("мост ПДА %s, протокол %d, лог: %s", VERSION, PROTOCOL, log_path)
 
     writer: DemoWriter | ReplayWriter | None = None
+    if args.find_in:
+        found = [f for f in find_snapshot_dirs(args.find_in) if f.fast_mtime is not None]
+        if not found:
+            log.error(
+                "в %s снимков игры нет. Включите аддон в MO2, загрузите сохранение и запустите снова.",
+                ", ".join(str(p) for p in args.find_in),
+            )
+            return 2
+        args.snapshot_dir = found[0].directory
+        log.info("снимки найдены: %s", found[0].describe())
     if args.snapshot_dir:
         snapshot_dir, source = args.snapshot_dir.expanduser().resolve(), "file"
         if not snapshot_dir.is_dir():
@@ -145,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
     log.info("на этом ПК: http://127.0.0.1:%d  (вкладка «Связь» покажет QR для телефона)", args.port)
     for ip in lan_addresses():
         log.info("в локальной сети: http://%s:%d", ip, args.port)
+    if args.open:
+        webbrowser.open(f"http://127.0.0.1:{args.port}")
     try:
         server.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:

@@ -40,6 +40,13 @@ class LocateTest(unittest.TestCase):
         self.assertEqual([f.directory.name for f in found], ["b", "a"])
         self.assertIn("только отчёт", found[1].describe())
 
+    def test_find_in_without_snapshots_exits_with_error(self) -> None:
+        from pda_bridge.__main__ import main
+
+        self.touch("GAMMA/overwrite/appdata/pda_report.txt")
+        code = main(["--find-in", str(self.root / "GAMMA"), "--data-dir", str(self.root / "data")])
+        self.assertEqual(code, 2)
+
     def test_skips_gamedata_and_missing_roots(self) -> None:
         self.touch("Anomaly/gamedata/scripts/pda_fast.json")
         self.assertEqual(find_snapshot_dirs([self.root / "Anomaly", self.root / "nope"]), [])
