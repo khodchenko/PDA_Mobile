@@ -1,0 +1,11 @@
+{
+  "name": "ПДА — S.T.A.L.K.E.R. Anomaly / GAMMA",
+  "short_name": "ПДА",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1b1d14",
+  "theme_color": "#1b1d14",
+  "lang": "ru",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
