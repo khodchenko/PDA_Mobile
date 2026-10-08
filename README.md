@@ -35,12 +35,24 @@
 На вкладке «Связь» видна вся цепочка игра → аддон → мост → телефон: где
 именно оборвалось, возраст снапшотов, отброшенные файлы и журнал событий.
 
+## Запуск на Windows двойным щелчком
+
+Нужен только Python 3.10+ с [python.org](https://www.python.org/downloads/),
+при установке отметить «Add python.exe to PATH». Веб-экран уже собран и лежит
+в `web/dist`.
+
+| Файл | Что делает |
+| --- | --- |
+| `start-demo.bat` | ПДА с демо-данными, без игры |
+| `pack-addon.bat` | Собирает `dist\stalker-pda-addon-<версия>.zip` для MO2 |
+| `start-game.bat` | Один раз спрашивает папку GAMMA, сам находит снимки игры и открывает ПДА |
+
 ## Запуск демо
 
 Нужны Python 3.10+ и Node.js 20+.
 
 ```bash
-cd web && npm install && npm run build && cd ..
+cd web && npm install && npm run build && cd ..   # только после правок в web/
 cd bridge && python3 -m pda_bridge --demo
 ```
 
@@ -66,6 +78,7 @@ Windows (при первом запуске Windows обычно спрашив�
 python3 -m pda_bridge --demo                     # демо-игра
 python3 -m pda_bridge --snapshot-dir ПАПКА        # читать файлы настоящей игры
 python3 -m pda_bridge --locate ИГРА MO2          # найти, куда игра пишет снимки
+python3 -m pda_bridge --find-in ПАПКА_GAMMA --open # найти снимки, читать их, открыть браузер
 python3 -m pda_bridge --demo --record run.jsonl  # записать поток снапшотов
 python3 -m pda_bridge --replay run.jsonl         # проиграть запись по кругу
 python3 -m pda_bridge --demo --torn-rate 0.2     # больше недописанных файлов
