@@ -1,12 +1,12 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="windows-1251"?>
 <string_table>
 	<string id="ui_mcm_menu_xpda">
-		<text>Р’РЅРµС€РЅРёР№ РџР”Рђ</text>
+		<text>Внешний ПДА</text>
 	</string>
 	<string id="ui_mcm_xpda_title">
-		<text>Р’РЅРµС€РЅРёР№ РџР”Рђ</text>
+		<text>Внешний ПДА</text>
 	</string>
 	<string id="ui_mcm_xpda_status">
-		<text>РЎС‚Р°С‚СѓСЃ РјРѕСЃС‚Р°</text>
+		<text>Статус моста</text>
 	</string>
 </string_table>

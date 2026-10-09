@@ -255,5 +255,21 @@ class TextTest(unittest.TestCase):
         self.assertEqual(out.decode("utf-8"), "Бар|Бар")
 
 
+class McmTextTest(unittest.TestCase):
+    def test_russian_mcm_strings_are_windows_1251(self) -> None:
+        path = CONFIGS / "text" / "rus" / "ui_mcm_xpda.xml"
+        raw = path.read_bytes()
+        text = raw.decode("cp1251")
+        self.assertIn('encoding="windows-1251"', text)
+        self.assertEqual(text.count("Внешний ПДА"), 2)
+        self.assertIn("Статус моста", text)
+        self.assertNotIn("Внешний ПДА".encode("utf-8"), raw)
+
+    def test_english_mcm_strings_declare_windows_1251(self) -> None:
+        text = (CONFIGS / "text" / "eng" / "ui_mcm_xpda.xml").read_bytes().decode("cp1251")
+        self.assertIn('encoding="windows-1251"', text)
+        self.assertIn("External PDA", text)
+
+
 if __name__ == "__main__":
     unittest.main()
