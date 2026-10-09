@@ -103,7 +103,10 @@
             "tasks": { "type": "boolean" },
             "inventory": { "type": "boolean" },
             "contacts": { "type": "boolean" },
-            "messages": { "type": "boolean" }
+            "messages": { "type": "boolean" },
+            "relations": { "type": "boolean" },
+            "encyclopedia": { "type": "boolean" },
+            "statistics": { "type": "boolean" }
           },
           "additionalProperties": false
         },
@@ -115,6 +118,92 @@
             "money": { "type": "integer" }
           },
           "additionalProperties": false
+        },
+        "tasks": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "type": "object",
+            "required": ["id", "title"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "title": { "type": "string", "minLength": 1 },
+              "description": { "type": "string" },
+              "storyline": { "type": "boolean" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "relations": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "goodwill", "stance"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "goodwill": { "type": "integer" },
+              "stance": { "enum": ["ally", "friend", "neutral", "hostile"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "contacts": {
+          "type": "array",
+          "maxItems": 24,
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "community": { "type": "string" },
+              "rank": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "encyclopedia": {
+          "type": "array",
+          "maxItems": 80,
+          "items": {
+            "type": "object",
+            "required": ["id", "title", "category"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "title": { "type": "string", "minLength": 1 },
+              "category": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "messages": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "required": ["channel", "text"],
+            "properties": {
+              "channel": { "type": "string", "minLength": 1 },
+              "sender": { "type": "string" },
+              "text": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "statistics": {
+          "type": "array",
+          "maxItems": 24,
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "value"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 },
+              "value": { "type": "integer" }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false

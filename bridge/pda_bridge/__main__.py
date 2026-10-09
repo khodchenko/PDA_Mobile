@@ -17,7 +17,8 @@ from typing import Any
 from . import PROTOCOL, VERSION
 from .channel import BridgePulse, SnapshotChannel
 from .fake_game import DemoWriter, ReplayWriter
-from .locate import MARKERS, find_snapshot_dirs, search_roots
+from .locate import MARKERS, find_snapshot_dirs, search_roots, standard_install_dirs
+from .maps import MapLibrary
 from .server import BridgeServer, lan_addresses, load_token
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -162,7 +163,8 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("веб-экран не найден в %s. Соберите его: cd web && npm run build", args.web_dist)
 
     try:
-        server = BridgeServer((args.host, args.port), channel, token, web_dist, source)
+        maps = MapLibrary(standard_install_dirs(snapshot_dir), args.data_dir / "maps")
+        server = BridgeServer((args.host, args.port), channel, token, web_dist, source, maps)
     except OSError as exc:
         log.error("не удалось открыть порт %s:%d: %s", args.host, args.port, exc)
         return 2

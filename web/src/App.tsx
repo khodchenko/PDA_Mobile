@@ -1,12 +1,19 @@
-import { Activity, Gauge, LayoutGrid, Map as MapIcon } from "lucide-react"
+import { Activity, BookOpen, ChartColumn, Gauge, ListChecks, Mail, Map as MapIcon, Shield, Users } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import { LinkBanner } from "@/components/pda/link-banner"
 import { LinkView } from "@/components/pda/link-view"
 import { MapView } from "@/components/pda/map-view"
-import { MoreView } from "@/components/pda/more-view"
 import { PairScreen } from "@/components/pda/pair-screen"
+import {
+  ContactsView,
+  EncyclopediaView,
+  MessagesView,
+  RelationsView,
+  StatisticsView,
+  TasksView,
+} from "@/components/pda/sections-view"
 import { StatusView } from "@/components/pda/status-view"
 import { TopBar } from "@/components/pda/top-bar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -18,8 +25,13 @@ import { describeChain } from "@/lib/link"
 const TABS = [
   { value: "status", label: "Статус", icon: Gauge },
   { value: "map", label: "Карта", icon: MapIcon },
+  { value: "tasks", label: "Задания", icon: ListChecks },
+  { value: "relations", label: "Группы", icon: Shield },
+  { value: "contacts", label: "Контакты", icon: Users },
+  { value: "guide", label: "Справочник", icon: BookOpen },
+  { value: "messages", label: "Новости", icon: Mail },
+  { value: "stats", label: "Статистика", icon: ChartColumn },
   { value: "link", label: "Связь", icon: Activity },
-  { value: "more", label: "Ещё", icon: LayoutGrid },
 ] as const
 
 export default function App() {
@@ -50,12 +62,12 @@ export default function App() {
     <div className="min-h-dvh">
       <TopBar chain={chain} fast={fast} />
       <Tabs value={tab} onValueChange={setTab} className="mx-auto max-w-5xl gap-4 px-4 pt-4 pb-28 md:pb-10">
-        <TabsList className="fixed inset-x-0 bottom-0 z-30 grid h-auto w-full grid-cols-4 rounded-none border-t border-border/60 bg-background/95 p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:static md:inline-flex md:w-fit md:rounded-lg md:border md:bg-muted md:p-[3px]">
+        <TabsList className="fixed inset-x-0 bottom-0 z-30 flex h-auto w-full justify-start overflow-x-auto rounded-none border-t border-border/60 bg-background/95 p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:static md:rounded-lg md:border md:bg-muted md:p-[3px]">
           {TABS.map(({ value, label, icon: Icon }) => (
             <TabsTrigger
               key={value}
               value={value}
-              className="h-14 flex-col gap-1 text-[11px] md:h-8 md:flex-row md:gap-1.5 md:px-3 md:text-sm"
+              className="h-14 min-w-16 flex-none flex-col gap-1 px-2 text-[11px] md:h-8 md:min-w-0 md:flex-row md:gap-1.5 md:px-3 md:text-sm"
             >
               <Icon className="size-5 md:size-4" />
               {label}
@@ -69,7 +81,25 @@ export default function App() {
           <StatusView fast={fast} slow={slow} />
         </TabsContent>
         <TabsContent value="map">
-          <MapView fast={fast} slow={slow} trail={bridge.trail} transitions={bridge.transitions} />
+          <MapView fast={fast} trail={bridge.trail} transitions={bridge.transitions} map={bridge.state?.map ?? null} token={bridge.token} />
+        </TabsContent>
+        <TabsContent value="tasks">
+          <TasksView tasks={slow?.tasks} available={!!slow?.capabilities?.tasks} />
+        </TabsContent>
+        <TabsContent value="relations">
+          <RelationsView rows={slow?.relations} available={!!slow?.capabilities?.relations} />
+        </TabsContent>
+        <TabsContent value="contacts">
+          <ContactsView rows={slow?.contacts} available={!!slow?.capabilities?.contacts} />
+        </TabsContent>
+        <TabsContent value="guide">
+          <EncyclopediaView rows={slow?.encyclopedia} available={!!slow?.capabilities?.encyclopedia} />
+        </TabsContent>
+        <TabsContent value="messages">
+          <MessagesView rows={slow?.messages} available={!!slow?.capabilities?.messages} />
+        </TabsContent>
+        <TabsContent value="stats">
+          <StatisticsView rows={slow?.statistics} available={!!slow?.capabilities?.statistics} />
         </TabsContent>
         <TabsContent value="link">
           <LinkView
@@ -79,9 +109,6 @@ export default function App() {
             log={bridge.log}
             onForget={bridge.forget}
           />
-        </TabsContent>
-        <TabsContent value="more">
-          <MoreView slow={slow} />
         </TabsContent>
       </Tabs>
       <Toaster theme="dark" position="top-center" />

@@ -79,12 +79,14 @@ class BridgeServer(ThreadingHTTPServer):
         token: str,
         web_dist: Path | None,
         source: str,
+        maps: Any = None,
     ) -> None:
         super().__init__(address, BridgeHandler)
         self.channel = channel
         self.token = token
         self.web_dist = web_dist.resolve() if web_dist else None
         self.source = source
+        self.maps = maps
         self.started = time.monotonic()
 
     def bridge_info(self) -> dict[str, Any]:
@@ -98,6 +100,16 @@ class BridgeServer(ThreadingHTTPServer):
 
     def state_body(self) -> tuple[int, dict[str, Any]]:
         version, body = self.channel.view()
+        level = ((body.get("fast") or {}) or {}).get("level") or {}
+        level_id = level.get("id") if isinstance(level, dict) else None
+        if self.maps is not None and isinstance(level_id, str):
+            try:
+                described = self.maps.describe(level_id)
+            except Exception:
+                log.exception("карта локации %s не прочитана", level_id)
+                described = None
+            if described:
+                body["map"] = described
         return version, {"protocol": PROTOCOL, "bridge": self.bridge_info(), **body}
 
     def pairing_urls(self) -> list[str]:
@@ -127,6 +139,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
         elif route == "/api/stream":
             if self._authorized(query):
                 self._stream()
+        elif route.startswith("/api/map/"):
+            if self._authorized(query):
+                self._map(route[len("/api/map/") :])
         elif route.startswith("/api/"):
             self._error(HTTPStatus.NOT_FOUND, "нет такого адреса")
         else:
@@ -158,6 +173,19 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.FORBIDDEN, "сопряжение открывается только на самом ПК")
             return
         self._json({"token": self.server.token, "urls": self.server.pairing_urls()})
+
+    def _map(self, name: str) -> None:
+        level = name[:-4] if name.endswith(".png") else ""
+        png = self.server.maps.png(level) if self.server.maps is not None and level else None
+        if not png:
+            self._error(HTTPStatus.NOT_FOUND, "для этой локации нет картинки карты")
+            return
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Cache-Control", "private, max-age=86400")
+        self.send_header("Content-Length", str(len(png)))
+        self.end_headers()
+        self.wfile.write(png)
 
     def _json(self, body: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")

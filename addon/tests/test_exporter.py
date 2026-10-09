@@ -164,7 +164,7 @@ class ExporterTest(unittest.TestCase):
 
     def test_log_is_cp1251(self) -> None:
         run = self.run_scenario("normal")
-        self.assertIn("[xpda] экспорт 0.1.1 запущен", run.log)
+        self.assertIn("[xpda] экспорт 0.1.2 запущен", run.log)
         self.assertIn("состояние игры: dead", run.log)
 
     def test_missing_engine_functions_drop_fields_instead_of_zeroing(self) -> None:

@@ -1,11 +1,11 @@
 import { ArrowRightLeft, Minus, Navigation, Plus } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { Trail, Transition } from "@/hooks/use-bridge"
 import { compassPoint, DASH, levelName, meters } from "@/lib/format"
-import type { FastSnapshot, SlowSnapshot } from "@/lib/protocol"
+import type { FastSnapshot, GameMap } from "@/lib/protocol"
 
 const RADII = [25, 50, 100, 250, 500]
 
@@ -15,13 +15,20 @@ function gridStep(radius: number): number {
   return 500
 }
 
-export function MapView({ fast, slow, trail, transitions }: {
+export function MapView({ fast, trail, transitions, map, token }: {
   fast: FastSnapshot | null
-  slow: SlowSnapshot | null
   trail: Trail
   transitions: Transition[]
+  map: GameMap | null
+  token: string | null
 }) {
   const [zoom, setZoom] = useState(2)
+  const [fit, setFit] = useState(false)
+  const [imageFailed, setImageFailed] = useState(false)
+  useEffect(() => {
+    setImageFailed(false)
+    setFit(false)
+  }, [map?.level])
   const radius = RADII[zoom]
   const pos = fast?.position
   const heading = fast?.heading_deg
@@ -40,7 +47,13 @@ export function MapView({ fast, slow, trail, transitions }: {
     lines.push({ key: `z${gz}`, x1: -radius, y1: -(gz - cz), x2: radius, y2: -(gz - cz), major: gz % (step * 4) === 0 })
   }
   const showTrail = pos && trail.levelId === fast?.level?.id && trail.points.length > 1
-  const arrow = radius * 0.07
+  const photo = map?.image && token && !imageFailed ? `${map.image}?token=${encodeURIComponent(token)}` : null
+  const fitted = fit && map
+  const viewX = fitted ? map.x1 - cx : -radius
+  const viewY = fitted ? -(map.z2 - cz) : -radius
+  const viewW = fitted ? map.x2 - map.x1 : radius * 2
+  const viewH = fitted ? map.z2 - map.z1 : radius * 2
+  const arrow = (fitted ? Math.min(viewW, viewH) / 2 : radius) * 0.07
 
   return (
     <div className="grid gap-4 md:grid-cols-[1fr_18rem]">
@@ -49,11 +62,19 @@ export function MapView({ fast, slow, trail, transitions }: {
           <div className="flex items-center justify-between gap-2">
             <CardTitle className="truncate">{levelName(fast?.level)}</CardTitle>
             <div className="flex items-center gap-1">
+              {map && (
+                <Button size="sm" variant={fit ? "default" : "outline"} onClick={() => setFit((v) => !v)}>
+                  {fit ? "У игрока" : "Вся локация"}
+                </Button>
+              )}
               <Button
                 size="icon"
                 variant="outline"
-                onClick={() => setZoom((z) => Math.min(RADII.length - 1, z + 1))}
-                disabled={zoom === RADII.length - 1}
+                onClick={() => {
+                  setFit(false)
+                  setZoom((z) => Math.min(RADII.length - 1, z + 1))
+                }}
+                disabled={!fit && zoom === RADII.length - 1}
                 aria-label="Отдалить"
               >
                 <Minus />
@@ -62,8 +83,11 @@ export function MapView({ fast, slow, trail, transitions }: {
               <Button
                 size="icon"
                 variant="outline"
-                onClick={() => setZoom((z) => Math.max(0, z - 1))}
-                disabled={zoom === 0}
+                onClick={() => {
+                  setFit(false)
+                  setZoom((z) => Math.max(0, z - 1))
+                }}
+                disabled={!fit && zoom === 0}
                 aria-label="Приблизить"
               >
                 <Plus />
@@ -74,11 +98,22 @@ export function MapView({ fast, slow, trail, transitions }: {
         <CardContent className="px-3">
           <div className="relative mx-auto aspect-square w-full max-w-[min(100%,68dvh)] overflow-hidden rounded-lg border border-border/70 bg-[radial-gradient(circle_at_center,oklch(0.26_0.03_120),oklch(0.17_0.012_115))]">
             <svg
-              viewBox={`${-radius} ${-radius} ${radius * 2} ${radius * 2}`}
+              viewBox={`${viewX} ${viewY} ${viewW} ${viewH}`}
               className="absolute inset-0 size-full"
               role="img"
-              aria-label="Положение игрока на сетке локации"
+              aria-label="Положение игрока на карте локации"
             >
+              {photo && map && (
+                <image
+                  href={photo}
+                  x={map.x1 - cx}
+                  y={-(map.z2 - cz)}
+                  width={map.x2 - map.x1}
+                  height={map.z2 - map.z1}
+                  preserveAspectRatio="none"
+                  onError={() => setImageFailed(true)}
+                />
+              )}
               {lines.map(({ key, major, ...l }) => (
                 <line
                   key={key}
@@ -184,12 +219,11 @@ export function MapView({ fast, slow, trail, transitions }: {
             )}
           </CardContent>
         </Card>
-        {!slow?.capabilities?.map_texture && (
-          <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-            Подложки карты пока нет: текстуры локаций ещё не импортированы из установки игры. Сетка в метрах, север
-            сверху, след показывает путь с момента подключения.
-          </p>
-        )}
+        <p className="px-1 text-xs leading-relaxed text-muted-foreground">
+          {photo
+            ? "Картинка из установки игры, север сверху. Маркер — это ты."
+            : "Картинки этой локации на диске нет, поэтому видна только сетка. Север сверху."}
+        </p>
       </div>
     </div>
   )

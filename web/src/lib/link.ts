@@ -36,6 +36,9 @@ const CAPABILITY_LABELS: Record<keyof Capabilities, string> = {
   inventory: "инвентарь",
   contacts: "контакты",
   messages: "сообщения",
+  relations: "группировки",
+  encyclopedia: "справочник",
+  statistics: "статистика",
 }
 
 export function capabilityList(caps: Capabilities | undefined): string[] {

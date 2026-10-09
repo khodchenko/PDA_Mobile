@@ -33,6 +33,57 @@ export interface Capabilities {
   inventory?: boolean
   contacts?: boolean
   messages?: boolean
+  relations?: boolean
+  encyclopedia?: boolean
+  statistics?: boolean
+}
+
+export interface PdaTask {
+  id: string
+  title: string
+  description?: string
+  storyline?: boolean
+}
+
+export interface FactionRelation {
+  id: string
+  name: string
+  goodwill: number
+  stance: "ally" | "friend" | "neutral" | "hostile"
+}
+
+export interface PdaContact {
+  name: string
+  community?: string
+  rank?: string
+}
+
+export interface PdaArticle {
+  id: string
+  title: string
+  category: string
+}
+
+export interface PdaMessage {
+  channel: string
+  sender?: string
+  text: string
+}
+
+export interface PdaStat {
+  id: string
+  label: string
+  value: number
+}
+
+export interface GameMap {
+  level: string
+  x1: number
+  z1: number
+  x2: number
+  z2: number
+  texture: string
+  image?: string
 }
 
 export interface SlowSnapshot extends Envelope {
@@ -41,6 +92,12 @@ export interface SlowSnapshot extends Envelope {
   game?: { build?: string; modpack?: string }
   capabilities?: Capabilities
   player?: { name?: string; id?: number; money?: number }
+  tasks?: PdaTask[]
+  relations?: FactionRelation[]
+  contacts?: PdaContact[]
+  encyclopedia?: PdaArticle[]
+  messages?: PdaMessage[]
+  statistics?: PdaStat[]
 }
 
 export interface BridgeState {
@@ -62,6 +119,7 @@ export interface BridgeState {
   }
   fast: FastSnapshot | null
   slow: SlowSnapshot | null
+  map?: GameMap | null
 }
 
 export interface Pairing {

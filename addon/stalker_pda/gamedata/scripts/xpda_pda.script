@@ -1,0 +1,321 @@
+-- Reads the PDA sections the game already keeps. Each reader returns nil when
+-- that source is not in this session, and an empty list when it is there but
+-- nothing matches. The saved message journal is not exposed to Lua: messages
+-- are only the live radio lines still sitting in the news queue.
+
+local json, text = xpda_json, xpda_text
+local floor = math.floor
+
+local FACTIONS = {
+	"stalker", "dolg", "freedom", "csky", "ecolog", "killer", "army", "bandit", "monolith",
+}
+
+local STATS = {
+	{ "tasks_completed", "Заданий выполнено" },
+	{ "tasks_failed", "Заданий провалено" },
+	{ "tasks_cancelled", "Заданий отменено" },
+	{ "killed_monsters", "Мутантов убито" },
+	{ "killed_stalkers_e", "Врагов убито" },
+	{ "killed_stalkers_n", "Нейтралов убито" },
+	{ "killed_stalkers_f", "Друзей убито" },
+	{ "artefacts_found", "Артефактов найдено" },
+	{ "artefacts_detected", "Артефактов засечено" },
+	{ "stashes_found", "Тайников найдено" },
+	{ "wounded_helped", "Раненым помог" },
+	{ "emissions", "Выбросов пережил" },
+	{ "psi_storms", "Пси-штормов пережил" },
+	{ "boxes_smashed", "Ящиков вскрыто" },
+	{ "items_crafted", "Предметов собрано" },
+	{ "articles", "Статей открыто" },
+}
+
+local logged = {}
+
+local function clip(s, limit)
+	if type(s) ~= "string" or s == "" then
+		return nil
+	end
+	if #s > limit then
+		return s:sub(1, limit)
+	end
+	return s
+end
+
+local function tr(ui_text, id)
+	if type(id) ~= "string" or id == "" then
+		return nil
+	end
+	local s = id
+	if game and type(game.translate_string) == "function" then
+		local ok, value = pcall(game.translate_string, id)
+		if ok and type(value) == "string" and value ~= "" then
+			s = value
+		end
+	end
+	return clip(ui_text(s), 500)
+end
+
+local function attempt(name, fn)
+	local ok, value = pcall(fn)
+	if not ok then
+		if not logged[name] and printf then
+			logged[name] = true
+			printf("%s", text.to_cp1251("[xpda] " .. name .. ": " .. tostring(value)))
+		end
+		return nil
+	end
+	return value
+end
+
+local function stance_of(goodwill)
+	if goodwill >= 2000 then
+		return "ally"
+	elseif goodwill >= 1000 then
+		return "friend"
+	elseif goodwill >= 500 then
+		return "neutral"
+	end
+	return "hostile"
+end
+
+local function read_tasks(ui_text)
+	if type(task_manager) ~= "table" or type(task_manager.get_task_manager) ~= "function" then
+		return nil
+	end
+	local tm = task_manager.get_task_manager()
+	if type(tm) ~= "table" or type(tm.task_info) ~= "table" then
+		return nil
+	end
+	local list = {}
+	for id, task in pairs(tm.task_info) do
+		if type(task) == "table" and task.last_check_task ~= "complete" and task.last_check_task ~= "fail" and task.forced_status ~= "complete" and task.forced_status ~= "fail" then
+			local item = json.obj()
+			local key = tostring(id)
+			json.set(item, "id", key)
+			json.set(item, "title", tr(ui_text, task.current_title or task.title) or key)
+			json.set(item, "description", tr(ui_text, task.current_descr or task.descr))
+			json.set(item, "storyline", task.storyline == true)
+			list[#list + 1] = item
+			if #list >= 40 then
+				break
+			end
+		end
+	end
+	return list
+end
+
+local function read_relations(ui_text)
+	if type(relation_registry) ~= "table" or type(relation_registry.community_goodwill) ~= "function" then
+		return nil
+	end
+	if not (db and db.actor and db.actor.id) then
+		return nil
+	end
+	local actor_id = db.actor:id()
+	if type(actor_id) ~= "number" then
+		return nil
+	end
+	local list = {}
+	for _, faction in ipairs(FACTIONS) do
+		local goodwill = relation_registry.community_goodwill(faction, actor_id)
+		if type(goodwill) == "number" then
+			local item = json.obj()
+			json.set(item, "id", faction)
+			json.set(item, "name", tr(ui_text, faction) or faction)
+			json.set(item, "goodwill", floor(goodwill))
+			json.set(item, "stance", stance_of(goodwill))
+			list[#list + 1] = item
+		end
+	end
+	return list
+end
+
+local function stalker_object(id)
+	local stored = db.storage and db.storage[id]
+	local npc = stored and stored.object
+	if npc then
+		return npc
+	end
+	if level and type(level.object_by_id) == "function" then
+		return level.object_by_id(id)
+	end
+end
+
+local function read_contacts(ui_text)
+	if not (db and db.actor and type(db.OnlineStalkers) == "table") then
+		return nil
+	end
+	local radius2 = 80 * 80
+	local list = {}
+	for i = 1, #db.OnlineStalkers do
+		local npc = stalker_object(db.OnlineStalkers[i])
+		if npc and npc.alive and npc:alive() then
+			local enemy = false
+			if npc.relation and game_object and game_object.enemy then
+				enemy = npc:relation(db.actor) == game_object.enemy
+			end
+			local near = true
+			if npc.position and db.actor.position then
+				local dist = db.actor:position():distance_to_sqr(npc:position())
+				near = type(dist) == "number" and dist <= radius2
+			end
+			if near and not enemy then
+				local name = npc.character_name and npc:character_name() or nil
+				name = tr(ui_text, name)
+				if name then
+					local item = json.obj()
+					json.set(item, "name", name)
+					local comm = npc.character_community and npc:character_community() or nil
+					json.set(item, "community", tr(ui_text, comm))
+					if type(ranks) == "table" and type(ranks.get_obj_rank_name) == "function" then
+						local rank = ranks.get_obj_rank_name(npc)
+						if type(rank) == "string" and rank ~= "" then
+							json.set(item, "rank", tr(ui_text, "st_rank_" .. rank) or rank)
+						end
+					end
+					list[#list + 1] = item
+					if #list >= 24 then
+						break
+					end
+				end
+			end
+		end
+	end
+	return list
+end
+
+local function line_key(ini, section, index)
+	local _, key = ini:r_line(section, index, "", "")
+	return key
+end
+
+local function read_encyclopedia(ui_text)
+	if type(is_unlocked_article) ~= "function" or type(ini_file) ~= "function" then
+		return nil
+	end
+	local ini = ini_file("plugins\\encyclopedia.ltx")
+	if not (ini and ini.section_exist and ini:section_exist("encyclopedia") and ini.line_count and ini.r_line) then
+		return nil
+	end
+	local list = {}
+	local categories = ini:line_count("encyclopedia") or 0
+	for i = 0, categories - 1 do
+		local category = line_key(ini, "encyclopedia", i)
+		if type(category) == "string" and category ~= "" and ini:section_exist(category) then
+			local count = ini:line_count(category) or 0
+			for j = 0, count - 1 do
+				local article = line_key(ini, category, j)
+				if type(article) == "string" and article ~= "" and is_unlocked_article(article) then
+					local item = json.obj()
+					json.set(item, "id", article)
+					json.set(item, "category", tr(ui_text, category) or category)
+					json.set(item, "title", tr(ui_text, article) or article)
+					list[#list + 1] = item
+					if #list >= 80 then
+						return list
+					end
+				end
+			end
+		end
+	end
+	return list
+end
+
+local function read_messages(ui_text)
+	if type(dynamic_news_manager) ~= "table" or type(dynamic_news_manager.get_dynamic_news) ~= "function" then
+		return nil
+	end
+	local news = dynamic_news_manager.get_dynamic_news()
+	if type(news) ~= "table" or type(news.queue) ~= "table" then
+		return nil
+	end
+	local list = {}
+	for channel, queue in pairs(news.queue) do
+		if type(queue) == "table" then
+			for n = 1, #queue do
+				local item = queue[n]
+				if type(item) == "table" and type(item.Mg) == "string" and item.Mg ~= "" then
+					local body = tr(ui_text, item.Mg) or clip(ui_text(item.Mg), 500)
+					if body then
+					local row = json.obj()
+					json.set(row, "channel", tostring(channel))
+					json.set(row, "sender", tr(ui_text, item.Se))
+					json.set(row, "text", body)
+					list[#list + 1] = row
+					if #list >= 12 then
+						return list
+					end
+					end
+				end
+			end
+		end
+	end
+	return list
+end
+
+local function stat_row(id, label, value)
+	if type(value) ~= "number" then
+		return nil
+	end
+	local item = json.obj()
+	json.set(item, "id", id)
+	json.set(item, "label", label)
+	json.set(item, "value", floor(value))
+	return item
+end
+
+local function read_statistics()
+	if type(game_statistics) ~= "table" or type(game_statistics.get_statistic_count) ~= "function" then
+		return nil
+	end
+	local list = {}
+	if db and db.actor then
+		if db.actor.character_rank then
+			local row = stat_row("rank", "Ранг", db.actor:character_rank())
+			if row then
+				list[#list + 1] = row
+			end
+		end
+		if db.actor.character_reputation then
+			local row = stat_row("reputation", "Репутация", db.actor:character_reputation())
+			if row then
+				list[#list + 1] = row
+			end
+		end
+	end
+	for i = 1, #STATS do
+		local row = stat_row(STATS[i][1], STATS[i][2], game_statistics.get_statistic_count(STATS[i][1]))
+		if row then
+			list[#list + 1] = row
+		end
+	end
+	return list
+end
+
+function fill(o, caps, ui_text)
+	local function put(key, fn)
+		local value = attempt(key, fn)
+		json.set(caps, key, value ~= nil)
+		if value ~= nil then
+			json.set(o, key, value)
+		end
+	end
+	put("tasks", function()
+		return read_tasks(ui_text)
+	end)
+	put("relations", function()
+		return read_relations(ui_text)
+	end)
+	put("contacts", function()
+		return read_contacts(ui_text)
+	end)
+	put("encyclopedia", function()
+		return read_encyclopedia(ui_text)
+	end)
+	put("messages", function()
+		return read_messages(ui_text)
+	end)
+	put("statistics", function()
+		return read_statistics()
+	end)
+end

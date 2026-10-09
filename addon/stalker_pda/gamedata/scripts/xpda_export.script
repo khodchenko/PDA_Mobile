@@ -4,7 +4,7 @@
 -- Every engine call is wrapped in pcall: a field the build does not have is
 -- left out of the snapshot and logged once, never replaced with zero.
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 local PROTOCOL = 1
 local LOG_PREFIX = "[xpda] "
 local STATS_PERIOD_MS = 60000
@@ -295,10 +295,8 @@ local function build_slow(seq)
 	json.set(caps, "player", name ~= nil or money ~= nil)
 	json.set(caps, "pose", field_status["position"] == "ok")
 	json.set(caps, "map_texture", false)
-	json.set(caps, "tasks", false)
 	json.set(caps, "inventory", false)
-	json.set(caps, "contacts", false)
-	json.set(caps, "messages", false)
+	xpda_pda.fill(o, caps, ui_text)
 	json.set(o, "capabilities", caps)
 
 	if name ~= nil or id ~= nil or money ~= nil then

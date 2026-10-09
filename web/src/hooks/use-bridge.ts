@@ -278,6 +278,7 @@ export function useBridge() {
     transitions,
     reconnects,
     lastMessageAt,
+    token,
     pairWith,
     forget,
   }
