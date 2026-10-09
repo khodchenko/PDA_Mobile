@@ -29,7 +29,7 @@ const TABS = [
   { value: "relations", label: "Группы", icon: Shield },
   { value: "contacts", label: "Контакты", icon: Users },
   { value: "guide", label: "Справочник", icon: BookOpen },
-  { value: "messages", label: "Новости", icon: Mail },
+  { value: "messages", label: "Сообщения", icon: Mail },
   { value: "stats", label: "Статистика", icon: ChartColumn },
   { value: "link", label: "Связь", icon: Activity },
 ] as const
