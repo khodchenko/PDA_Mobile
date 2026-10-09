@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from . import PROTOCOL, VERSION
-from .channel import SnapshotChannel
+from .channel import BridgePulse, SnapshotChannel
 from .fake_game import DemoWriter, ReplayWriter
 from .locate import MARKERS, find_snapshot_dirs, search_roots
 from .server import BridgeServer, lan_addresses, load_token
@@ -151,7 +151,11 @@ def main(argv: list[str] | None = None) -> int:
     recorder = Recorder(args.record) if args.record else None
     if recorder:
         log.info("запись снимков в %s", args.record)
-    channel = SnapshotChannel(snapshot_dir, on_accept=recorder)
+    channel = SnapshotChannel(
+        snapshot_dir,
+        on_accept=recorder,
+        pulse=BridgePulse(snapshot_dir / "pda_bridge.txt", port=args.port, source=source),
+    )
     token = load_token(args.data_dir, reset=args.reset_token)
     web_dist = args.web_dist if (args.web_dist / "index.html").exists() else None
     if web_dist is None:

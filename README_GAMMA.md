@@ -14,13 +14,15 @@
 python3 tools/pack_addon.py
 ```
 
-Получится `dist/stalker-pda-addon-0.1.0.zip`. Внутри только `gamedata/`:
+Получится `dist/stalker-pda-addon-0.1.1.zip`. Внутри только `gamedata/`:
 
 ```
 gamedata/scripts/xpda_export.script   экспортёр
 gamedata/scripts/xpda_json.script     JSON-кодировщик
 gamedata/scripts/xpda_text.script     перекодировка cp1251 → UTF-8
+gamedata/scripts/xpda_mcm.script      страница MCM со статусом моста
 gamedata/configs/xpda.ltx             настройки
+gamedata/configs/text/rus|eng/ui_mcm_xpda.xml
 ```
 
 ## 2. Поставить в MO2
@@ -37,15 +39,19 @@ gamedata/configs/xpda.ltx             настройки
 2. В консоли (`~`) или в `appdata\logs\xray_*.log` появятся строки `[xpda]`:
 
    ```
-   [xpda] экспортёр 0.1.0 загружен
+   [xpda] экспортёр 0.1.1 загружен
    [xpda] папка ...\appdata\ ($app_data_root$): запись работает
-   [xpda] экспорт 0.1.0 запущен: сессия ..., папка ...
+   [xpda] экспорт 0.1.1 запущен: сессия ..., папка ...
    ```
 
 3. Рядом со снимками появится `pda_report.txt`: какая папка выбрана, какие
    функции Lua есть в этой сборке, какие поля прочитались на первом кадре.
 4. Раз в минуту в лог пишется статистика: сколько снимков записано и сколько
    миллисекунд это стоило Lua.
+5. В игре: Esc → Настройки модов (MCM) → «Внешний ПДА». Настроек там нет.
+   Страница показывает, что игра видит мод, идёт ли экспорт и жив ли мост
+   на ПК. Мост пишет это в `pda_bridge.txt` рядом со снимками. Если мост не
+   запущен, на странице так и написано.
 
 ## 4. Найти папку снимков и запустить мост
 

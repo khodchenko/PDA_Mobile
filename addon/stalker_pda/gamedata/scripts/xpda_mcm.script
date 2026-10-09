@@ -1,0 +1,40 @@
+-- MCM page for the external PDA. No options are stored: the page only
+-- shows that the game loaded the mod and what the PC bridge last reported.
+-- Anomaly MCM (ui_mcm) loads every *mcm.script and calls on_mcm_load.
+-- Without MCM this file is never executed and the exporter is unchanged.
+
+function fill_status(_, handlers)
+	if type(handlers) ~= "table" or not handlers.desc then
+		return
+	end
+	local ok, err = pcall(function()
+		local desc = handlers.desc
+		desc:SetText(xpda_text.to_cp1251(xpda_export.mcm_status()))
+		if desc.AdjustHeightToText then
+			desc:AdjustHeightToText()
+		end
+		if desc.SetWndSize and desc.GetWidth and desc.GetHeight and vector2 then
+			desc:SetWndSize(vector2():set(desc:GetWidth(), desc:GetHeight() + 20))
+		end
+	end)
+	if not ok and printf then
+		printf("%s", xpda_text.to_cp1251("[xpda] MCM: " .. tostring(err)))
+	end
+end
+
+function on_mcm_load()
+	return {
+		id = "xpda",
+		sh = true,
+		gr = {
+			{ id = "title", type = "title", text = "ui_mcm_xpda_title", align = "l" },
+			{
+				id = "status",
+				type = "desc",
+				text = "ui_mcm_xpda_status",
+				clr = { 255, 220, 220, 220 },
+				ui_hook_functor = { fill_status },
+			},
+		},
+	}
+end

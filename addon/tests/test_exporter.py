@@ -164,7 +164,7 @@ class ExporterTest(unittest.TestCase):
 
     def test_log_is_cp1251(self) -> None:
         run = self.run_scenario("normal")
-        self.assertIn("[xpda] экспорт 0.1.0 запущен", run.log)
+        self.assertIn("[xpda] экспорт 0.1.1 запущен", run.log)
         self.assertIn("состояние игры: dead", run.log)
 
     def test_missing_engine_functions_drop_fields_instead_of_zeroing(self) -> None:
@@ -204,6 +204,22 @@ class ExporterTest(unittest.TestCase):
         run = self.run_scenario("bad_time")
         self.assertNotIn("game_time", run.fast[0])
         self.assertIn("значения вне диапазона: день 0", run.log)
+
+    def test_mcm_page_shows_bridge_status_and_stores_nothing(self) -> None:
+        self.run_scenario("normal")
+        before = (self.out / "mcm_before.txt").read_text("utf-8")
+        live = (self.out / "mcm_bridge.txt").read_text("utf-8")
+        quiet = (self.out / "mcm_quiet.txt").read_text("utf-8")
+        self.assertIn("игра его видит", before)
+        self.assertIn("Экспорт: идёт", before)
+        self.assertIn("Мост: не запущен", before)
+        self.assertIn("Мост: читает снимки, seq 7, порт 47615", live)
+        self.assertIn("Мост: молчит уже", quiet)
+        tree = (self.out / "mcm_tree.txt").read_text("utf-8").splitlines()
+        self.assertEqual(tree[0], "xpda")
+        self.assertEqual(tree[1], "title,desc")
+        shown = (self.out / "mcm_shown.txt").read_bytes().decode("cp1251")
+        self.assertIn("Мост: молчит уже", shown)
 
     def test_bridge_accepts_exporter_files(self) -> None:
         self.run_scenario("normal")

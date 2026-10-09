@@ -67,6 +67,18 @@ class LinkState:
     status: str = "no_data"
 
 
+@dataclass
+class BridgePulse:
+    """Plain-text note the game MCM reads from the snapshot folder.
+
+    ASCII only, no token. Rewritten about once a second while the bridge runs.
+    """
+
+    path: Path
+    port: int
+    source: str
+
+
 class SnapshotChannel:
     """Polls the two files, keeps the last valid snapshot of each kind."""
 
@@ -76,11 +88,14 @@ class SnapshotChannel:
         poll_interval: float = 0.05,
         clock: Callable[[], float] = time.monotonic,
         on_accept: Callable[[str, dict[str, Any]], None] | None = None,
+        pulse: BridgePulse | None = None,
     ) -> None:
         self.snapshot_dir = snapshot_dir
         self.poll_interval = poll_interval
         self.clock = clock
         self.on_accept = on_accept
+        self.pulse = pulse
+        self._pulse_at = 0.0
         self.state = LinkState()
         self.changed = threading.Condition()
         self._stop = threading.Event()
@@ -115,6 +130,38 @@ class SnapshotChannel:
             if bumped:
                 self.state.version += 1
                 self.changed.notify_all()
+        self._write_pulse()
+
+    def _write_pulse(self) -> None:
+        pulse = self.pulse
+        if pulse is None:
+            return
+        now = time.monotonic()
+        if self._pulse_at and now - self._pulse_at < 1.0:
+            return
+        self._pulse_at = now
+        _, body = self.view()
+        link = body["link"]
+        fast = body["fast"] or {}
+        age = link["fast_age_ms"]
+        lines = [
+            f"protocol={PROTOCOL}",
+            f"status={link['status']}",
+            f"source={pulse.source}",
+            f"port={pulse.port}",
+            f"fast_seq={fast.get('seq', '')}",
+            f"fast_session={fast.get('session', '')}",
+            f"fast_age_ms={'' if age is None else age}",
+            f"unix={int(time.time())}",
+            "",
+        ]
+        try:
+            pulse.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = pulse.path.with_name(pulse.path.name + ".tmp")
+            tmp.write_text("\n".join(lines), encoding="ascii")
+            tmp.replace(pulse.path)
+        except OSError as exc:
+            log.warning("не записал %s: %s", pulse.path, exc)
 
     def _poll_kind(self, kind: str) -> bool:
         ks = self.state.kinds[kind]

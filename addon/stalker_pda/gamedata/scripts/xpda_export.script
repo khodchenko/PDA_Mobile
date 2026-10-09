@@ -4,7 +4,7 @@
 -- Every engine call is wrapped in pcall: a field the build does not have is
 -- left out of the snapshot and logged once, never replaced with zero.
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 local PROTOCOL = 1
 local LOG_PREFIX = "[xpda] "
 local STATS_PERIOD_MS = 60000
@@ -22,6 +22,7 @@ local cfg = {
 }
 
 local st = {
+	loaded = false,
 	active = false,
 	session = nil,
 	dir = nil,
@@ -624,7 +625,89 @@ local function on_net_destroy()
 	st.active = false
 end
 
+local BRIDGE_FILE = "pda_bridge.txt"
+local BRIDGE_QUIET_S = 5
+
+local function read_file(path)
+	local f = io.open(path, "rb")
+	if not f then
+		return nil
+	end
+	local data = f:read("*a")
+	f:close()
+	return data
+end
+
+local function parse_kv(raw)
+	local fields = {}
+	for line in tostring(raw):gmatch("[^\r\n]+") do
+		local key, value = line:match("^([%w_]+)=(.*)$")
+		if key then
+			fields[key] = value
+		end
+	end
+	return fields
+end
+
+local function bridge_status()
+	if not st.dir then
+		return "Мост: папка снимков ещё не выбрана"
+	end
+	local raw = read_file(join(st.dir, BRIDGE_FILE))
+	if not raw or raw == "" then
+		return "Мост: не запущен. На ПК оставьте открытым start-game.bat"
+	end
+	local fields = parse_kv(raw)
+	local unix = tonumber(fields.unix or "")
+	local age
+	if unix and type(os) == "table" and type(os.time) == "function" then
+		local ok, now = pcall(os.time)
+		if ok and type(now) == "number" then
+			age = now - unix
+		end
+	end
+	if age and age > BRIDGE_QUIET_S then
+		return format("Мост: молчит уже %d с. Окно start-game.bat закрыто или смотрит не в эту папку", floor(age))
+	end
+	local status = fields.status ~= "" and fields.status or "?"
+	local port = fields.port ~= "" and fields.port or "?"
+	local seq = fields.fast_seq ~= "" and fields.fast_seq or "нет"
+	if status == "ok" then
+		return format("Мост: читает снимки, seq %s, порт %s", seq, port)
+	elseif status == "stale" then
+		return format("Мост: запущен (порт %s), но снимки устарели", port)
+	elseif status == "no_data" then
+		return format("Мост: запущен (порт %s), снимков ещё не видит", port)
+	end
+	return format("Мост: статус %s, порт %s", status, port)
+end
+
+-- Text for the MCM page. UTF-8. No settings: the page only reports state.
+function mcm_status()
+	local lines = {}
+	if st.loaded then
+		lines[#lines + 1] = "Мод: игра его видит, экспортёр " .. VERSION
+	else
+		lines[#lines + 1] = "Мод: скрипт MCM есть, экспортёр ещё не загружен"
+	end
+	if not st.loaded or not st.session then
+		lines[#lines + 1] = "Экспорт: начнётся после загрузки сохранения"
+	elseif not st.dir then
+		lines[#lines + 1] = "Экспорт: папка для снимков не выбрана"
+	elseif st.active then
+		lines[#lines + 1] = format("Экспорт: идёт, сессия %s, быстрый снимок %d", tostring(st.session), st.seq_fast)
+	elseif st.write_failures > 0 then
+		lines[#lines + 1] = format("Экспорт: остановлен, ошибок записи подряд %d", st.write_failures)
+	else
+		lines[#lines + 1] = "Экспорт: остановлен (меню или смена уровня)"
+	end
+	lines[#lines + 1] = "Папка: " .. (st.dir or "ещё не выбрана")
+	lines[#lines + 1] = bridge_status()
+	return table.concat(lines, "\n")
+end
+
 function on_game_start()
+	st.loaded = true
 	load_config()
 	RegisterScriptCallback("actor_on_first_update", on_first_update)
 	RegisterScriptCallback("actor_on_update", on_update)

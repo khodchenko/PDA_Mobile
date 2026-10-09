@@ -259,6 +259,62 @@ world.health = 0
 world.alive = false
 run_frames(1000)
 
+local function write_text(name, data)
+	local f = assert(io.open(path(out_dir, name), "wb"))
+	f:write(data)
+	f:close()
+end
+
+write_text("mcm_before.txt", xpda_export.mcm_status())
+
+local bridge = assert(io.open(snapshot_dir .. "pda_bridge.txt", "wb"))
+bridge:write("protocol=1\nstatus=ok\nsource=file\nport=47615\nfast_seq=7\nunix=" .. os.time() .. "\n")
+bridge:close()
+write_text("mcm_bridge.txt", xpda_export.mcm_status())
+
+bridge = assert(io.open(snapshot_dir .. "pda_bridge.txt", "wb"))
+bridge:write("protocol=1\nstatus=ok\nsource=file\nport=47615\nfast_seq=7\nunix=" .. (os.time() - 40) .. "\n")
+bridge:close()
+write_text("mcm_quiet.txt", xpda_export.mcm_status())
+
+local tree = xpda_mcm.on_mcm_load()
+local kinds = {}
+local function walk(node)
+	if node.type then
+		kinds[#kinds + 1] = node.type
+	end
+	for _, child in ipairs(node.gr or {}) do
+		walk(child)
+	end
+end
+walk(tree)
+write_text("mcm_tree.txt", tree.id .. "\n" .. table.concat(kinds, ",") .. "\n")
+
+vector2 = function()
+	return {
+		set = function()
+			return {}
+		end,
+	}
+end
+local shown
+xpda_mcm.fill_status(nil, {
+	desc = {
+		SetText = function(_, s)
+			shown = s
+		end,
+		AdjustHeightToText = function() end,
+		SetWndSize = function() end,
+		GetWidth = function()
+			return 400
+		end,
+		GetHeight = function()
+			return 80
+		end,
+	},
+})
+write_text("mcm_shown.txt", shown or "")
+
 fire("actor_on_net_destroy")
 capture()
 

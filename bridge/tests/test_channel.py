@@ -4,7 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pda_bridge.channel import FILE_NAMES, STALE_AFTER_S, RejectedSnapshot, SnapshotChannel, parse_snapshot
+from pda_bridge.channel import (
+    FILE_NAMES,
+    STALE_AFTER_S,
+    BridgePulse,
+    RejectedSnapshot,
+    SnapshotChannel,
+    parse_snapshot,
+)
 from pda_bridge.fake_game import DemoGame, encode
 
 SCHEMA = json.loads((Path(__file__).resolve().parents[2] / "protocol" / "snapshot-v1.schema.json").read_text("utf-8"))
@@ -123,6 +130,20 @@ class ChannelTest(unittest.TestCase):
         _, view = self.channel.view()
         self.assertEqual(view["fast"]["session"], "new")
         self.assertEqual(view["fast"]["seq"], 1)
+
+    def test_pulse_file_tells_the_game_the_bridge_is_reading(self) -> None:
+        self.channel.pulse = BridgePulse(self.dir / "pda_bridge.txt", port=47615, source="file")
+        self.put("fast", 4, body={"health": 0.5})
+        self.channel.poll_once()
+        text = (self.dir / "pda_bridge.txt").read_text("ascii")
+        self.assertIn("status=ok\n", text)
+        self.assertIn("source=file\n", text)
+        self.assertIn("port=47615\n", text)
+        self.assertIn("fast_seq=4\n", text)
+        self.assertNotIn("token", text)
+        written = text
+        self.channel.poll_once()
+        self.assertEqual((self.dir / "pda_bridge.txt").read_text("ascii"), written)
 
     def test_version_bumps_only_on_change(self) -> None:
         self.put("slow", 1)

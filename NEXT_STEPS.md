@@ -17,7 +17,7 @@
 ## 3. Поставить аддон в игру
 
 - [ ] Двойной щелчок по `pack-addon.bat`. Откроется папка с
-      `stalker-pda-addon-0.1.0.zip`.
+      `stalker-pda-addon-0.1.1.zip`.
 - [ ] MO2 → «Install a new mod from an archive» → этот zip → включить мод.
 - [ ] Запустить GAMMA через MO2, загрузить сохранение, побегать пару минут.
 

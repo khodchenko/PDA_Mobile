@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<string_table>
+	<string id="ui_mcm_menu_xpda">
+		<text>External PDA</text>
+	</string>
+	<string id="ui_mcm_xpda_title">
+		<text>External PDA</text>
+	</string>
+	<string id="ui_mcm_xpda_status">
+		<text>Bridge status</text>
+	</string>
+</string_table>

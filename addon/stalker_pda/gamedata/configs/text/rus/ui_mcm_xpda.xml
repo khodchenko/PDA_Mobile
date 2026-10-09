@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<string_table>
+	<string id="ui_mcm_menu_xpda">
+		<text>Внешний ПДА</text>
+	</string>
+	<string id="ui_mcm_xpda_title">
+		<text>Внешний ПДА</text>
+	</string>
+	<string id="ui_mcm_xpda_status">
+		<text>Статус моста</text>
+	</string>
+</string_table>
