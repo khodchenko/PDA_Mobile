@@ -6,13 +6,13 @@ if not exist bridge\.data mkdir bridge\.data
 set "GAMEDIR="
 if exist bridge\.data\game_dir.txt set /p GAMEDIR=<bridge\.data\game_dir.txt
 if defined GAMEDIR goto have_dir
-echo Укажите папку, куда установлена GAMMA: ту, в которой лежат папки Anomaly и GAMMA.
-echo Например: C:\GAMMA
+echo По инструкции GAMMA папки Anomaly и GAMMA лежат рядом в корне диска, а не одна внутри другой.
+echo Например: C:\Anomaly и C:\GAMMA. Можно указать любую из них.
 set /p GAMEDIR=Папка: 
 :have_dir
 set "GAMEDIR=%GAMEDIR:"=%"
 >bridge\.data\game_dir.txt echo %GAMEDIR%
-echo Ищу снимки игры в %GAMEDIR%
+echo Ищу снимки в %GAMEDIR% и во второй папке установки в корне того же диска.
 echo Чтобы остановить ПДА, закройте это окно.
 cd bridge
 python -m pda_bridge --find-in "%GAMEDIR%" --open

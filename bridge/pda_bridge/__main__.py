@@ -17,7 +17,7 @@ from typing import Any
 from . import PROTOCOL, VERSION
 from .channel import SnapshotChannel
 from .fake_game import DemoWriter, ReplayWriter
-from .locate import MARKERS, find_snapshot_dirs
+from .locate import MARKERS, find_snapshot_dirs, search_roots
 from .server import BridgeServer, lan_addresses, load_token
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -90,6 +90,7 @@ class Recorder:
 
 
 def locate(roots: list[Path]) -> int:
+    roots = search_roots(roots)
     found = find_snapshot_dirs(roots)
     if not found:
         print("Снимков не найдено. Запустите игру с аддоном, загрузите сохранение и повторите.")
@@ -112,11 +113,15 @@ def main(argv: list[str] | None = None) -> int:
 
     writer: DemoWriter | ReplayWriter | None = None
     if args.find_in:
-        found = [f for f in find_snapshot_dirs(args.find_in) if f.fast_mtime is not None]
+        roots = search_roots(args.find_in)
+        found = [f for f in find_snapshot_dirs(roots) if f.fast_mtime is not None]
         if not found:
+            looked = roots or list(args.find_in)
             log.error(
-                "в %s снимков игры нет. Включите аддон в MO2, загрузите сохранение и запустите снова.",
-                ", ".join(str(p) for p in args.find_in),
+                "в %s снимков игры нет. По инструкции GAMMA это две папки в корне диска, "
+                "например C:\\Anomaly и C:\\GAMMA; смотрел в обе, если они есть. "
+                "Включите аддон в MO2, загрузите сохранение и запустите снова.",
+                ", ".join(str(p) for p in looked),
             )
             return 2
         args.snapshot_dir = found[0].directory

@@ -50,17 +50,21 @@ gamedata/configs/xpda.ltx             настройки
 ## 4. Найти папку снимков и запустить мост
 
 Под MO2 новые файлы игры обычно оказываются не в папке игры, а в
-`overwrite` профиля MO2. Мост найдёт их сам:
+`overwrite` профиля MO2. Мост найдёт их сам.
+
+По инструкции установки это две разные папки в корне одного диска, не одна
+внутри другой: `C:\Anomaly` и `C:\GAMMA` (или `D:\Anomaly` и `D:\GAMMA`).
 
 ```bash
 cd bridge
-python -m pda_bridge --locate "C:\GAMMA\Anomaly" "C:\GAMMA\GAMMA"
+python -m pda_bridge --locate "C:\Anomaly" "C:\GAMMA"
 ```
 
-Он напечатает готовую команду, например:
+`start-game.bat` делает то же самое: если указать только `C:\GAMMA`, мост
+сам посмотрит и в `C:\Anomaly`. Он напечатает готовую команду, например:
 
 ```bash
-python -m pda_bridge --snapshot-dir "C:\GAMMA\GAMMA\overwrite\appdata"
+python -m pda_bridge --snapshot-dir "C:\GAMMA\profiles\GAMMA\overwrite\appdata"
 ```
 
 Дальше как в `README.md`: открыть `http://127.0.0.1:47615` на ПК, на вкладке
